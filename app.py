@@ -48,10 +48,17 @@ Independence / Veridy / third-party verification:
 - Association (shared brand, FAQ, Glassdoor, founder) raises a question. It does not prove the vendor verifies itself.
 - If independence is not established from public evidence, status is Unable to Verify or Ambiguous. Finding must say “Independence not established from public evidence.” Do NOT use Contradicted unless a reliable source shows the same party both performs the ITAD work and issues the verification of that work.
 
+Outsourcing / partner network (always complete operating_model):
+- Detect whether the vendor processes in its own facilities, manages work through contracted partners, or both. “Global coverage,” “partner network,” “audited partners,” “nationwide/worldwide footprint” usually means outsourcing.
+- If work is outsourced, HOW the network is managed is the claim that matters — more than the coverage slogan. Look for: named partners vs unnamed; contracts; how partners are selected and audited; whether the vendor or the partner holds the asset; who can release an equipment hold; segregation of duties between operations and verification; verification tags or equivalent; independent verification of partner work.
+- Outsourcing without described controls is not automatically Contradicted. It is Unable to Verify / Not Publicly Substantiated, with a specific evidence request (partner list or category list, audit protocol, hold-and-release rules, who verifies partner output).
+- Independent verification, SoD, tags, and verification holds matter MORE when processing is outsourced. Say that in the finding when a network model is present.
+
 Chain of custody:
 - CoC is a process. Separate process claims, evidence-offered claims, and verify/validate wording.
+- Always ask, from public pages: Are exception / discrepancy reports offered to the client? How are inventory discrepancies resolved? Who is notified, and who can close an exception?
 - Absolute words (guaranteed, unbroken, irrefutable, 100%) should be flagged as language that needs a tighter public formulation — not as proof the process fails.
-- Do not infer that the vendor “verifies its own chain of custody” unless they say that, or an independent party is clearly absent *and* they explicitly claim to verify. If unclear, ask for evidence rather than accuse.
+- Do not infer that the vendor “verifies its own chain of custody” unless they say that. If unclear, ask for evidence rather than accuse.
 
 Legal conclusions:
 - Words like “illegal” on a vendor site, without a cited statute, are unsourced legal conclusions. Rate Ambiguous and request a source. Do not treat that as proof they are breaking the law.
@@ -67,7 +74,7 @@ Method:
 1. Search the website, About/services/security/CoC/legal pages, press, LinkedIn, and relevant registries.
 2. List 4–10 headline slogans as written.
 3. Extract 4–7 checkable claims (CoC first, then environment, security, certs, legal, entity).
-4. Always complete chain_of_custody.
+4. Always complete chain_of_custody AND operating_model.
 5. For every claim include evidence_needed: the specific public or private item that would move the status to Supported or Contradicted.
 6. Do not invent URLs, registry hits, or quotes.
 7. Summary: 2–4 sentences plus a count in this shape: “Supported N · Contradicted N · Not publicly substantiated N · Unable to verify N · Ambiguous N.”
@@ -91,9 +98,25 @@ Return STRICT JSON only. No markdown fences.
     "claims_verification": true,
     "independent_verification_stated": false,
     "notify_discrepancies": "Yes | No | Unclear",
+    "exception_reports_offered": "Yes | No | Unclear",
+    "discrepancy_resolution_described": "Yes | No | Unclear",
     "verbs": ["verify", "validate", "maintain", "unbroken", "provide"],
-    "finding": "what public pages say; do not infer self-verification",
+    "finding": "what public pages say; include exception reports and how discrepancies are closed",
     "evidence_needed": "what would resolve the CoC question"
+  },
+  "operating_model": {
+    "status": "one of the five statuses",
+    "model": "Own facilities | Partner network | Hybrid | Unclear",
+    "outsources_processing": true,
+    "partners_named": false,
+    "partner_audit_described": false,
+    "segregation_of_duties_described": false,
+    "verification_tags_described": false,
+    "equipment_holds_described": false,
+    "independent_verification_of_partner_work": false,
+    "quotes": ["coverage or partner sentences"],
+    "finding": "how public pages describe network management; if outsourced, state that controls matter more",
+    "evidence_needed": "partner management protocol, named facilities or categories, hold/release rules, who verifies partner output"
   },
   "claims": [
     {
@@ -405,6 +428,8 @@ def build_report_pdf(company: str, data: dict[str, Any]) -> bytes:
         ("Claims to verify or validate CoC", yn(coc.get("claims_verification"))),
         ("Independent verification described", yn(coc.get("independent_verification_stated"))),
         ("Will notify client of discrepancies", str(coc.get("notify_discrepancies") or "Unclear")),
+        ("Exception / discrepancy reports offered", str(coc.get("exception_reports_offered") or "Unclear")),
+        ("How discrepancies are resolved is described", str(coc.get("discrepancy_resolution_described") or "Unclear")),
         (
             "Verbs used",
             ", ".join(str(v) for v in (coc.get("verbs") or []) if str(v).strip()) or "none found",
@@ -421,6 +446,49 @@ def build_report_pdf(company: str, data: dict[str, Any]) -> bytes:
     pdf.ln(1)
     if coc.get("finding"):
         _wrapped(pdf, str(coc.get("finding")), size=10)
+
+    ops = data.get("operating_model") if isinstance(data.get("operating_model"), dict) else {}
+    _section_label(pdf, "Operating model and partner network")
+    oy = pdf.get_y()
+    pdf.set_font("Times", "B", 14)
+    pdf.set_text_color(*NAVY)
+    pdf.cell(110, 7, pdf_text(str(ops.get("model") or "Operating model")))
+    pdf.set_xy(130, oy + 1)
+    _pill(pdf, str(ops.get("status") or "Unable to Verify"))
+    pdf.set_y(oy + 9)
+    _wrapped(
+        pdf,
+        "If processing is outsourced, how the network is managed matters more than a coverage slogan. Independent verification, segregation of duties, verification tags, and equipment holds matter more when another party holds the asset.",
+        size=9,
+        color=MUTED,
+    )
+    for q in ops.get("quotes") or []:
+        if str(q).strip():
+            _wrapped(pdf, f'"{q}"', size=10, style="I")
+    for label, val in [
+        ("Outsources processing", yn(ops.get("outsources_processing"))),
+        ("Partners named in public materials", yn(ops.get("partners_named"))),
+        ("Partner audit method described", yn(ops.get("partner_audit_described"))),
+        ("Segregation of duties described", yn(ops.get("segregation_of_duties_described"))),
+        ("Verification tags described", yn(ops.get("verification_tags_described"))),
+        ("Equipment verification holds described", yn(ops.get("equipment_holds_described"))),
+        ("Independent verification of partner work", yn(ops.get("independent_verification_of_partner_work"))),
+    ]:
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(*NAVY)
+        pdf.cell(118, 6, pdf_text(label))
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(*INK)
+        pdf.cell(0, 6, pdf_text(val), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(1)
+    if ops.get("finding"):
+        _wrapped(pdf, str(ops.get("finding")), size=10)
+    if ops.get("evidence_needed"):
+        pdf.set_fill_color(250, 241, 220)
+        pdf.set_text_color(109, 78, 4)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.multi_cell(0, 5, pdf_text("Evidence that would resolve this: " + str(ops.get("evidence_needed"))), fill=True)
+        pdf.ln(2)
     need = coc.get("evidence_needed") or coc.get("trust_note")
     if need:
         pdf.set_fill_color(250, 241, 220)
@@ -485,6 +553,7 @@ def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None)
     claims = data.get("claims") if isinstance(data.get("claims"), list) else []
     headlines = data.get("headline_claims") if isinstance(data.get("headline_claims"), list) else []
     coc = data.get("chain_of_custody") if isinstance(data.get("chain_of_custody"), dict) else {}
+    ops = data.get("operating_model") if isinstance(data.get("operating_model"), dict) else {}
 
     headline_items = ""
     if headlines:
@@ -544,10 +613,39 @@ def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None)
         <tr><th>Claims to verify or validate CoC</th><td>{html.escape(yn(coc.get("claims_verification")))}</td></tr>
         <tr><th>Independent verification described</th><td>{html.escape(yn(coc.get("independent_verification_stated")))}</td></tr>
         <tr><th>Will notify client of discrepancies</th><td>{html.escape(str(coc.get("notify_discrepancies") or "Unclear"))}</td></tr>
+        <tr><th>Exception / discrepancy reports offered</th><td>{html.escape(str(coc.get("exception_reports_offered") or "Unclear"))}</td></tr>
+        <tr><th>How discrepancies are resolved is described</th><td>{html.escape(str(coc.get("discrepancy_resolution_described") or "Unclear"))}</td></tr>
         <tr><th>Verbs used</th><td>{verbs_s}</td></tr>
       </table>
       <div class="claim-finding">{html.escape(str(coc.get("finding") or ""))}</div>
-      <div class="trust-note">Evidence that would resolve this: {html.escape(str(coc.get("evidence_needed") or coc.get("trust_note") or "Primary CoC records and a description of who performs any verification."))}</div>
+      <div class="trust-note">Evidence that would resolve this: {html.escape(str(coc.get("evidence_needed") or coc.get("trust_note") or "Primary CoC records, exception reports, and how discrepancies are closed."))}</div>
+    </div>
+    """
+    ops_quotes = "".join(
+        f'<div class="claim-quote">“{html.escape(str(q))}”</div>'
+        for q in (ops.get("quotes") or [])
+        if str(q).strip()
+    )
+    ops_status = str(ops.get("status") or "Unable to Verify")
+    ops_block = f"""
+    <div class="coc-block">
+      <div class="claim-head">
+        <div class="claim-title">{html.escape(str(ops.get("model") or "Operating model"))}</div>
+        <div class="pill {pill_class(ops_status)}">{html.escape(ops_status)}</div>
+      </div>
+      <p class="coc-lead">If processing is outsourced, how the network is managed matters more than a coverage slogan. Independent verification, segregation of duties, verification tags, and equipment holds matter more when another party holds the asset.</p>
+      {ops_quotes}
+      <table class="coc-table">
+        <tr><th>Outsources processing</th><td>{html.escape(yn(ops.get("outsources_processing")))}</td></tr>
+        <tr><th>Partners named in public materials</th><td>{html.escape(yn(ops.get("partners_named")))}</td></tr>
+        <tr><th>Partner audit method described</th><td>{html.escape(yn(ops.get("partner_audit_described")))}</td></tr>
+        <tr><th>Segregation of duties described</th><td>{html.escape(yn(ops.get("segregation_of_duties_described")))}</td></tr>
+        <tr><th>Verification tags described</th><td>{html.escape(yn(ops.get("verification_tags_described")))}</td></tr>
+        <tr><th>Equipment verification holds described</th><td>{html.escape(yn(ops.get("equipment_holds_described")))}</td></tr>
+        <tr><th>Independent verification of partner work</th><td>{html.escape(yn(ops.get("independent_verification_of_partner_work")))}</td></tr>
+      </table>
+      <div class="claim-finding">{html.escape(str(ops.get("finding") or ""))}</div>
+      <div class="trust-note">Evidence that would resolve this: {html.escape(str(ops.get("evidence_needed") or "Partner management protocol, named facilities or categories, hold/release rules, and who verifies partner output."))}</div>
     </div>
     """
 
@@ -639,6 +737,8 @@ def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None)
   {headline_items}
   <div class="section-label">Chain of custody review</div>
   {coc_block}
+  <div class="section-label">Operating model and partner network</div>
+  {ops_block}
   <div class="section-label">Other claims reviewed</div>
   {''.join(cards)}
   <div class="gaps-block">
@@ -671,7 +771,23 @@ SAMPLE_REPORT = {
         "notify_discrepancies": "Unclear",
         "verbs": ["unbroken", "verify"],
         "finding": "Public pages claim an unbroken process and use verify. Who performs any verification, and whether job-level records exist, is not established from public evidence.",
-        "evidence_needed": "A sample chain-of-custody packet and a statement of who, other than operations, reconciles expected vs received assets.",
+        "exception_reports_offered": "Unclear",
+        "discrepancy_resolution_described": "Unclear",
+        "evidence_needed": "A sample chain-of-custody packet, an exception report, and who can close a discrepancy.",
+    },
+    "operating_model": {
+        "status": "Unable to Verify",
+        "model": "Partner network",
+        "outsources_processing": True,
+        "partners_named": False,
+        "partner_audit_described": False,
+        "segregation_of_duties_described": False,
+        "verification_tags_described": False,
+        "equipment_holds_described": False,
+        "independent_verification_of_partner_work": False,
+        "quotes": ["Global coverage through audited, contracted partners."],
+        "finding": "Coverage is claimed through partners. Public pages do not describe how partners are managed, who holds the asset, or who verifies partner output.",
+        "evidence_needed": "Partner management protocol, hold/release rules, and who verifies partner work.",
     },
     "claims": [
         {
@@ -817,7 +933,9 @@ def main() -> None:
 - **Unable to verify** — the check needs contracts, unnamed facilities, certificates, or other nonpublic items.
 - **Ambiguous** — wording, manager vs facility, or brand vs legal entity needs clarification.
 
-Chain of custody is a process. The review records process claims, evidence offered, verify/validate wording, and whether an independent party is *described*. It does not infer self-verification from branding or ownership.
+Chain of custody is a process. The review also asks whether exception reports exist and how inventory discrepancies are closed.
+
+If the vendor outsources processing, the review treats network management as the real claim: named vs unnamed partners, audit method, segregation of duties, verification tags, equipment holds, and independent verification of partner work. Coverage slogans are not a substitute.
             """
         )
 
