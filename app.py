@@ -14,6 +14,7 @@ from typing import Any
 
 import httpx
 import streamlit as st
+from fpdf import FPDF
 
 XAI_RESPONSES_URL = "https://api.x.ai/v1/responses"
 DEFAULT_MODEL = "grok-4.6"
@@ -194,6 +195,245 @@ def yn(val: Any) -> str:
     if val is False:
         return "No"
     return "Unclear"
+
+
+def pdf_text(value: Any) -> str:
+    text = str(value or "")
+    replacements = {
+        "\u2014": "-",
+        "\u2013": "-",
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2022": "-",
+        "\u00a0": " ",
+        "\u2026": "...",
+    }
+    for src, dst in replacements.items():
+        text = text.replace(src, dst)
+    return text.encode("latin-1", "replace").decode("latin-1")
+
+
+NAVY = (15, 28, 46)
+TEAL = (31, 156, 131)
+INK = (26, 30, 36)
+MUTED = (107, 111, 118)
+PILL = {
+    "pill-red": ((248, 233, 231), (179, 54, 44)),
+    "pill-amber": ((250, 241, 220), (154, 107, 6)),
+    "pill-green": ((231, 243, 236), (31, 122, 88)),
+}
+
+
+class ClaimsPDF(FPDF):
+    def header(self) -> None:
+        pass
+
+    def footer(self) -> None:
+        self.set_y(-12)
+        self.set_font("Helvetica", "", 8)
+        self.set_text_color(*MUTED)
+        self.cell(0, 8, f"Veridy public claims screening  |  Page {self.page_no()}", align="C")
+
+
+def _section_label(pdf: ClaimsPDF, label: str) -> None:
+    pdf.ln(3)
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_text_color(*TEAL)
+    pdf.cell(0, 7, pdf_text(label).upper(), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(*INK)
+
+
+def _wrapped(pdf: ClaimsPDF, text: str, size: int = 11, style: str = "", color=INK, after: float = 2) -> None:
+    pdf.set_font("Helvetica", style, size)
+    pdf.set_text_color(*color)
+    pdf.multi_cell(0, 5.2, pdf_text(text))
+    pdf.ln(after)
+
+
+def _pill(pdf: ClaimsPDF, status: str) -> None:
+    key = pill_class(status)
+    bg, fg = PILL[key]
+    label = pdf_text(status).upper()
+    pdf.set_font("Helvetica", "B", 7)
+    w = pdf.get_string_width(label) + 6
+    x, y = pdf.get_x(), pdf.get_y()
+    pdf.set_fill_color(*bg)
+    pdf.set_text_color(*fg)
+    pdf.rect(x, y, w, 5.5, style="F")
+    pdf.set_xy(x, y + 0.6)
+    pdf.cell(w, 4.4, label, align="C")
+    pdf.set_xy(x + w + 2, y)
+    pdf.set_text_color(*INK)
+
+
+def build_report_pdf(company: str, data: dict[str, Any]) -> bytes:
+    pdf = ClaimsPDF(format="Letter", unit="mm")
+    pdf.set_auto_page_break(auto=True, margin=16)
+    pdf.add_page()
+    pdf.set_left_margin(18)
+    pdf.set_right_margin(18)
+
+    logo = find_logo()
+    if logo and logo.suffix.lower() in {".png", ".jpg", ".jpeg"}:
+        try:
+            pdf.image(str(logo), x=18, y=14, h=12)
+            pdf.set_y(30)
+        except Exception:
+            pdf.set_y(16)
+            pdf.set_font("Helvetica", "B", 11)
+            pdf.set_text_color(*NAVY)
+            pdf.cell(0, 6, "VERIDY VERIFICATION", new_x="LMARGIN", new_y="NEXT")
+    else:
+        pdf.set_y(16)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.set_text_color(*NAVY)
+        pdf.cell(0, 6, "VERIDY VERIFICATION", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.set_text_color(*TEAL)
+    pdf.cell(0, 5, "VERIDY  ·  PUBLIC CLAIMS SCREENING", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Times", "", 22)
+    pdf.set_text_color(*NAVY)
+    pdf.cell(0, 10, "Vendor Claims Audit", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(*MUTED)
+    pdf.multi_cell(
+        0,
+        5,
+        pdf_text(
+            "Headline promises, chain of custody, sustainability, security, certification & liability - not a Verified ITAD opinion"
+        ),
+    )
+    pdf.set_draw_color(*NAVY)
+    pdf.set_line_width(0.7)
+    y = pdf.get_y() + 2
+    pdf.line(18, y, 198, y)
+    pdf.set_draw_color(*TEAL)
+    pdf.set_line_width(0.9)
+    pdf.line(18, y + 1.6, 42, y + 1.6)
+    pdf.set_y(y + 5)
+
+    today = date.today().strftime("%B %d, %Y")
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(*MUTED)
+    pdf.cell(90, 6, pdf_text(f"SUBJECT: {company}"))
+    pdf.cell(0, 6, pdf_text(today), align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_draw_color(228, 221, 207)
+    pdf.set_line_width(0.2)
+    pdf.line(18, pdf.get_y(), 198, pdf.get_y())
+    pdf.ln(3)
+
+    _section_label(pdf, "Summary")
+    _wrapped(pdf, str(data.get("summary") or "No summary provided."), size=12, style="")
+
+    _section_label(pdf, "Headline claims on the website")
+    headlines = data.get("headline_claims") if isinstance(data.get("headline_claims"), list) else []
+    if headlines:
+        for h in headlines:
+            if str(h).strip():
+                _wrapped(pdf, f"- {h}", size=11, after=0.5)
+        pdf.ln(2)
+    else:
+        _wrapped(pdf, "No headline slogans were extracted from public pages.", size=10, color=MUTED)
+
+    coc = data.get("chain_of_custody") if isinstance(data.get("chain_of_custody"), dict) else {}
+    _section_label(pdf, "Chain of custody review")
+    row_y = pdf.get_y()
+    pdf.set_font("Times", "B", 14)
+    pdf.set_text_color(*NAVY)
+    pdf.cell(110, 7, "Chain of custody")
+    pdf.set_xy(130, row_y + 1)
+    _pill(pdf, str(coc.get("status") or "Needs Substantiation"))
+    pdf.set_y(row_y + 9)
+    _wrapped(
+        pdf,
+        "Chain of custody is a process. Public pages were checked for whether the vendor claims the process exists, whether evidence is offered, and whether verification is the vendor's own word or an independent act.",
+        size=9,
+        color=MUTED,
+    )
+    quotes = coc.get("quotes") if isinstance(coc.get("quotes"), list) else []
+    for q in quotes:
+        if str(q).strip():
+            _wrapped(pdf, f'"{q}"', size=10, style="I")
+    rows = [
+        ("Claims the process is achieved / maintained", yn(coc.get("claims_process"))),
+        ("Claims CoC evidence is provided to the client", yn(coc.get("claims_evidence"))),
+        ("Claims to verify or validate CoC", yn(coc.get("claims_verification"))),
+        ("Independent verification described", yn(coc.get("independent_verification_stated"))),
+        ("Will notify client of discrepancies", str(coc.get("notify_discrepancies") or "Unclear")),
+        (
+            "Verbs used",
+            ", ".join(str(v) for v in (coc.get("verbs") or []) if str(v).strip()) or "none found",
+        ),
+    ]
+    pdf.set_font("Helvetica", "", 10)
+    for label, val in rows:
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(*NAVY)
+        pdf.cell(118, 6, pdf_text(label))
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(*INK)
+        pdf.cell(0, 6, pdf_text(val), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(1)
+    if coc.get("finding"):
+        _wrapped(pdf, str(coc.get("finding")), size=10)
+    if coc.get("trust_note"):
+        pdf.set_fill_color(250, 241, 220)
+        pdf.set_text_color(109, 78, 4)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.multi_cell(0, 5, pdf_text(str(coc.get("trust_note"))), fill=True)
+        pdf.ln(2)
+
+    _section_label(pdf, "Other claims reviewed")
+    claims = data.get("claims") if isinstance(data.get("claims"), list) else []
+    if not claims:
+        _wrapped(pdf, "No specific claims could be extracted for review.", size=10, color=MUTED)
+    for c in claims:
+        if not isinstance(c, dict):
+            continue
+        if pdf.get_y() > 250:
+            pdf.add_page()
+        status = str(c.get("status") or "Needs Substantiation")
+        y0 = pdf.get_y()
+        pdf.set_font("Times", "B", 13)
+        pdf.set_text_color(*NAVY)
+        title = pdf_text(str(c.get("title") or "Untitled claim"))
+        pdf.multi_cell(120, 6, title)
+        title_bottom = pdf.get_y()
+        pdf.set_xy(140, y0 + 1)
+        _pill(pdf, status)
+        pdf.set_y(max(title_bottom, y0 + 8))
+        if c.get("category"):
+            _wrapped(pdf, str(c.get("category")), size=8, color=MUTED, after=1)
+        if c.get("claim"):
+            _wrapped(pdf, f'"{c.get("claim")}"', size=10, style="I", after=1)
+        if c.get("finding"):
+            _wrapped(pdf, str(c.get("finding")), size=10, after=1)
+        if c.get("source"):
+            _wrapped(pdf, f"Source: {c.get('source')}", size=8, color=MUTED, after=3)
+        pdf.set_draw_color(228, 221, 207)
+        pdf.line(18, pdf.get_y(), 198, pdf.get_y())
+        pdf.ln(3)
+
+    _section_label(pdf, "Gaps & limitations")
+    _wrapped(pdf, str(data.get("gaps") or "No gaps noted."), size=10, color=MUTED)
+
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(*MUTED)
+    pdf.multi_cell(
+        0,
+        4.2,
+        pdf_text(
+            "Prepared as a Veridy public-claims screening aid using AI and public web search. "
+            "It is not a Verified ITAD determination, not independent assurance of the vendor, "
+            "not a certified compliance audit, and not a substitute for registry confirmation or job-level evidence. "
+            "A vendor that verifies its own chain of custody is asking to be trusted."
+        ),
+    )
+
+    return bytes(pdf.output())
 
 
 def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None) -> str:
@@ -497,12 +737,23 @@ def main() -> None:
     if report and subject:
         html_doc = render_report_html(subject, report, logo_uri)
         st.components.v1.html(html_doc, height=2800, scrolling=True)
-        st.download_button(
-            "Download HTML report",
-            data=html_doc.encode("utf-8"),
-            file_name=f"veridy-claims-{re.sub(r'[^a-z0-9]+', '-', subject.lower()).strip('-')}.html",
-            mime="text/html",
-        )
+        slug = re.sub(r"[^a-z0-9]+", "-", subject.lower()).strip("-")
+        try:
+            pdf_bytes = build_report_pdf(subject, report)
+            st.download_button(
+                "Download PDF report",
+                data=pdf_bytes,
+                file_name=f"veridy-claims-{slug}.pdf",
+                mime="application/pdf",
+            )
+        except Exception as exc:
+            st.warning(f"PDF export failed ({exc}). HTML download is available instead.")
+            st.download_button(
+                "Download HTML report",
+                data=html_doc.encode("utf-8"),
+                file_name=f"veridy-claims-{slug}.html",
+                mime="text/html",
+            )
         if st.button("Run another audit"):
             st.session_state.pop("report", None)
             st.session_state.pop("company", None)
