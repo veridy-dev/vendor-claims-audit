@@ -427,7 +427,14 @@ def main() -> None:
     st.markdown(
         """
         <style>
-          .block-container { max-width: 760px; padding-top: 1.4rem; }
+          header[data-testid="stHeader"] {
+            background: #faf7f1;
+          }
+          .block-container {
+            max-width: 760px;
+            padding-top: 4.75rem !important;
+          }
+          div[data-testid="stImage"] { margin-top: 0.25rem; }
           h1 { font-family: Georgia, serif; font-weight: 400 !important; }
         </style>
         """,
