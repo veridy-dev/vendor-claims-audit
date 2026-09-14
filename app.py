@@ -27,60 +27,86 @@ LOGO_CANDIDATES = (
     ROOT / "veridy-logo.jpg",
 )
 
-SYSTEM_PROMPT = """You are a rigorous, skeptical vendor-claims auditor working for a Veridy public-claims screening tool.
-You specialize in ITAD (IT Asset Disposition). You may audit adjacent recycling / destruction / remarketing firms.
+SYSTEM_PROMPT = """You are preparing a Veridy Claims Readiness Review from PUBLIC sources only.
+This is not a verdict on whether the vendor is trustworthy. It is a map of:
+- What they claim
+- What public evidence supports it
+- What cannot be verified from public sources
+- What appears inconsistent
+- What evidence would resolve the question
+
+Never turn an unanswered question into an accusation. Absence of public evidence is not evidence that the claim is false.
+
+Role of the subject company:
+- Distinguish ITAD *manager* / broker / consultant from the *processing facility*.
+- A manager that says it “provides recycling” or “certified destruction” often means it arranges those services through partners. That is not automatically a contradiction.
+- Certification claims about R2, e-Stewards, NAID AAA must be tested against the *named facility* that would perform the work. If partners are unnamed, status is Unable to Verify — not Contradicted and not a finding against the manager.
+- Distinguish brand name, legal entity, DBA, subsidiary, and parent. An acquisition does not erase the acquired LLC. Do not call a remaining brand/entity “Contradicted” just because a parent bought the company.
+
+Independence / Veridy / third-party verification:
+- Ownership, software provenance, branding, who sells the service, and who *performs* verification are different questions.
+- Association (shared brand, FAQ, Glassdoor, founder) raises a question. It does not prove the vendor verifies itself.
+- If independence is not established from public evidence, status is Unable to Verify or Ambiguous. Finding must say “Independence not established from public evidence.” Do NOT use Contradicted unless a reliable source shows the same party both performs the ITAD work and issues the verification of that work.
+
+Chain of custody:
+- CoC is a process. Separate process claims, evidence-offered claims, and verify/validate wording.
+- Absolute words (guaranteed, unbroken, irrefutable, 100%) should be flagged as language that needs a tighter public formulation — not as proof the process fails.
+- Do not infer that the vendor “verifies its own chain of custody” unless they say that, or an independent party is clearly absent *and* they explicitly claim to verify. If unclear, ask for evidence rather than accuse.
+
+Legal conclusions:
+- Words like “illegal” on a vendor site, without a cited statute, are unsourced legal conclusions. Rate Ambiguous and request a source. Do not treat that as proof they are breaking the law.
+
+Statuses — use EXACTLY one of these five strings:
+- Supported — sufficient independent public evidence supports the claim as written.
+- Contradicted — a reliable public source affirmatively conflicts with the claim.
+- Not Publicly Substantiated — the vendor makes the claim; supporting public evidence was not found. This is not a finding that the claim is false.
+- Unable to Verify — checking the claim requires nonpublic items (contracts, unnamed downstream facilities, certificates, project records, paywalled registries).
+- Ambiguous — the wording is unclear, manager vs facility is mixed, or brand/entity/parent is mixed. State what clarification would resolve it.
 
 Method:
-1. Use web search to find the company's website (homepage, About, services, sustainability, security, chain of custody / process, legal/terms), press pages, LinkedIn, and certification registries (NAID AAA / i-SIGMA, R2 / R2v3 / SERI, e-Stewards, ISO, SOC 2) when claimed.
-2. Extract the vendor's own headline marketing claims from the website — short slogans and value promises as the company writes them (e.g. "Maximum Value", "Minimum Risk", "Unbroken Chain of Custody"). List 4 to 10 if present.
-3. Extract 4 to 7 specific checkable claims and rate each. Priority:
-   a) chain of custody (always include at least one CoC-related claim if any CoC language exists)
-   b) environmental / sustainability
-   c) data security / destruction method
-   d) certification — company marketing vs a named facility listing
-   e) legal / liability / indemnification
-   f) entity-name or date inconsistencies
-4. ALWAYS complete the chain_of_custody section, even if the company barely mentions CoC.
-   Chain of custody is a PROCESS. Separate:
-   - process claim ("we maintain / have an unbroken chain of custody")
-   - evidence claim ("we provide chain-of-custody records / serial reports / photos / GPS / manifests")
-   - verification claim ("we verify" or "we validate" chain of custody)
-   Ask, from public pages only:
-   - Do they claim CoC is achieved, or that CoC evidence is provided?
-   - Do they claim they will notify the client of discrepancies?
-   - Do they use verify, validate, maintain, unbroken, or provide?
-   Rule: a vendor saying they "verify" their own chain of custody, without an independent party, is a TRUST claim. Treat that wording as potentially misleading. Status should not be Substantiated unless an independent verification mechanism is actually described and evidenced. Certification of a process is not the same as independent verification of a specific chain of custody.
-5. Rate each claim as EXACTLY one of: Substantiated, Unsubstantiated, Needs Substantiation, Inconsistent, Contradicted.
-6. Do not invent URLs, registry results, or quotes. Paywalled registries = gap + Needs Substantiation.
-7. Summary: 2–4 sentences, direct, non-promotional.
+1. Search the website, About/services/security/CoC/legal pages, press, LinkedIn, and relevant registries.
+2. List 4–10 headline slogans as written.
+3. Extract 4–7 checkable claims (CoC first, then environment, security, certs, legal, entity).
+4. Always complete chain_of_custody.
+5. For every claim include evidence_needed: the specific public or private item that would move the status to Supported or Contradicted.
+6. Do not invent URLs, registry hits, or quotes.
+7. Summary: 2–4 sentences plus a count in this shape: “Supported N · Contradicted N · Not publicly substantiated N · Unable to verify N · Ambiguous N.”
 
 Return STRICT JSON only. No markdown fences.
 {
   "summary": "string",
-  "headline_claims": ["short slogan or value claim as written on the site"],
+  "readiness": {
+    "supported": 0,
+    "contradicted": 0,
+    "not_publicly_substantiated": 0,
+    "unable_to_verify": 0,
+    "ambiguous": 0
+  },
+  "headline_claims": ["short slogan as written"],
   "chain_of_custody": {
-    "status": "one of the five exact values",
-    "quotes": ["verbatim or close CoC sentences found"],
+    "status": "one of the five statuses",
+    "quotes": ["verbatim or close CoC sentences"],
     "claims_process": true,
     "claims_evidence": true,
     "claims_verification": true,
     "independent_verification_stated": false,
     "notify_discrepancies": "Yes | No | Unclear",
     "verbs": ["verify", "validate", "maintain", "unbroken", "provide"],
-    "finding": "what the public pages actually say and why it is process, evidence, trust, or independent",
-    "trust_note": "If they claim verification without an independent party, state that it is trust-based and the verification wording is misleading. Otherwise a short note."
+    "finding": "what public pages say; do not infer self-verification",
+    "evidence_needed": "what would resolve the CoC question"
   },
   "claims": [
     {
       "title": "short label",
-      "category": "Chain of custody | Environment | Security | Certification | Legal | Entity | Other",
-      "status": "one of the five exact values",
+      "category": "Chain of custody | Environment | Security | Certification | Legal | Entity | Independence | Other",
+      "status": "one of the five statuses",
       "claim": "quoted or closely paraphrased public claim",
       "source": "URL or page description",
-      "finding": "what the check showed"
+      "finding": "what the public check showed",
+      "evidence_needed": "specific item that would resolve it"
     }
   ],
-  "gaps": "what could not be verified and why"
+  "gaps": "what could not be verified from public sources and why"
 }
 """
 
@@ -173,18 +199,34 @@ def run_xai_audit(company: str, website: str, linkedin: str, api_key: str, model
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    with httpx.Client(timeout=180.0) as client:
-        resp = client.post(XAI_RESPONSES_URL, headers=headers, json=body)
-    if resp.status_code >= 400:
-        raise RuntimeError(f"xAI API error {resp.status_code}: {resp.text[:600]}")
-    return extract_json(extract_output_text(resp.json()))
+    last_err: Exception | None = None
+    for attempt in range(2):
+        try:
+            with httpx.Client(timeout=httpx.Timeout(300.0, connect=20.0)) as client:
+                resp = client.post(XAI_RESPONSES_URL, headers=headers, json=body)
+            if resp.status_code >= 400:
+                raise RuntimeError(f"xAI API error {resp.status_code}: {resp.text[:600]}")
+            return extract_json(extract_output_text(resp.json()))
+        except httpx.TimeoutException as exc:
+            last_err = exc
+            if attempt == 0:
+                continue
+            raise RuntimeError(
+                "The read timed out after 5 minutes. Grok was still searching public pages. "
+                "Wait a few seconds and run the same company again. "
+                "If it keeps failing, set XAI_MODEL to grok-4.1-fast in Streamlit Secrets."
+            ) from exc
+        except Exception as exc:
+            last_err = exc
+            raise
+    raise RuntimeError(str(last_err) if last_err else "Audit failed.")
 
 
 def pill_class(status: str) -> str:
     s = (status or "").lower()
-    if "unsubstantiated" in s or "contradicted" in s:
+    if "contradicted" in s:
         return "pill-red"
-    if "substantiated" in s and "needs" not in s and "un" not in s:
+    if s.startswith("supported") or s in {"substantiated", "verified"}:
         return "pill-green"
     return "pill-amber"
 
@@ -379,11 +421,12 @@ def build_report_pdf(company: str, data: dict[str, Any]) -> bytes:
     pdf.ln(1)
     if coc.get("finding"):
         _wrapped(pdf, str(coc.get("finding")), size=10)
-    if coc.get("trust_note"):
+    need = coc.get("evidence_needed") or coc.get("trust_note")
+    if need:
         pdf.set_fill_color(250, 241, 220)
         pdf.set_text_color(109, 78, 4)
         pdf.set_font("Helvetica", "", 9)
-        pdf.multi_cell(0, 5, pdf_text(str(coc.get("trust_note"))), fill=True)
+        pdf.multi_cell(0, 5, pdf_text("Evidence that would resolve this: " + str(need)), fill=True)
         pdf.ln(2)
 
     _section_label(pdf, "Other claims reviewed")
@@ -412,7 +455,9 @@ def build_report_pdf(company: str, data: dict[str, Any]) -> bytes:
         if c.get("finding"):
             _wrapped(pdf, str(c.get("finding")), size=10, after=1)
         if c.get("source"):
-            _wrapped(pdf, f"Source: {c.get('source')}", size=8, color=MUTED, after=3)
+            _wrapped(pdf, f"Source: {c.get('source')}", size=8, color=MUTED, after=1)
+        if c.get("evidence_needed"):
+            _wrapped(pdf, f"Evidence that would resolve this: {c.get('evidence_needed')}", size=9, after=3)
         pdf.set_draw_color(228, 221, 207)
         pdf.line(18, pdf.get_y(), 198, pdf.get_y())
         pdf.ln(3)
@@ -429,7 +474,7 @@ def build_report_pdf(company: str, data: dict[str, Any]) -> bytes:
             "Prepared as a Veridy public-claims screening aid using AI and public web search. "
             "It is not a Verified ITAD determination, not independent assurance of the vendor, "
             "not a certified compliance audit, and not a substitute for registry confirmation or job-level evidence. "
-            "A vendor that verifies its own chain of custody is asking to be trusted."
+            "An unanswered public question is an evidence request, not an accusation."
         ),
     )
 
@@ -454,16 +499,18 @@ def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None)
     for c in claims:
         if not isinstance(c, dict):
             continue
-        status = str(c.get("status") or "Needs Substantiation")
+        status = str(c.get("status") or "Unable to Verify")
         title = html.escape(str(c.get("title") or "Untitled claim"))
         claim = html.escape(str(c.get("claim") or ""))
         finding = html.escape(str(c.get("finding") or ""))
         source = html.escape(str(c.get("source") or ""))
         category = html.escape(str(c.get("category") or ""))
+        needed = html.escape(str(c.get("evidence_needed") or ""))
         quote = f'<div class="claim-quote">“{claim}”</div>' if claim else ""
         finding_h = f'<div class="claim-finding">{finding}</div>' if finding else ""
         source_h = f'<div class="claim-source">Source: {source}</div>' if source else ""
         cat_h = f'<div class="claim-source">{category}</div>' if category else ""
+        need_h = f'<div class="trust-note">Evidence that would resolve this: {needed}</div>' if needed else ""
         cards.append(
             f"""
             <div class="claim-card">
@@ -471,12 +518,12 @@ def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None)
                 <div class="claim-title">{title}</div>
                 <div class="pill {pill_class(status)}">{html.escape(status)}</div>
               </div>
-              {cat_h}{quote}{finding_h}{source_h}
+              {cat_h}{quote}{finding_h}{source_h}{need_h}
             </div>
             """
         )
 
-    coc_status = str(coc.get("status") or "Needs Substantiation")
+    coc_status = str(coc.get("status") or "Unable to Verify")
     quotes = coc.get("quotes") if isinstance(coc.get("quotes"), list) else []
     quote_html = "".join(
         f'<div class="claim-quote">“{html.escape(str(q))}”</div>' for q in quotes if str(q).strip()
@@ -489,7 +536,7 @@ def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None)
         <div class="claim-title">Chain of custody</div>
         <div class="pill {pill_class(coc_status)}">{html.escape(coc_status)}</div>
       </div>
-      <p class="coc-lead">Chain of custody is a process. Public pages were checked for whether the vendor claims the process exists, whether evidence is offered, and whether “verification” is the vendor’s own word or an independent act.</p>
+      <p class="coc-lead">Chain of custody is a process. This block records what the vendor claims in public and what evidence would be needed to support or contradict it. An unanswered question is not an accusation.</p>
       {quote_html}
       <table class="coc-table">
         <tr><th>Claims the process is achieved / maintained</th><td>{html.escape(yn(coc.get("claims_process")))}</td></tr>
@@ -500,7 +547,7 @@ def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None)
         <tr><th>Verbs used</th><td>{verbs_s}</td></tr>
       </table>
       <div class="claim-finding">{html.escape(str(coc.get("finding") or ""))}</div>
-      <div class="trust-note">{html.escape(str(coc.get("trust_note") or ""))}</div>
+      <div class="trust-note">Evidence that would resolve this: {html.escape(str(coc.get("evidence_needed") or coc.get("trust_note") or "Primary CoC records and a description of who performs any verification."))}</div>
     </div>
     """
 
@@ -580,7 +627,7 @@ def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None)
   <div class="letterhead">
     <div class="kicker">Veridy · Public claims screening</div>
     <h1>Vendor Claims Audit</h1>
-    <div class="subtitle">Headline promises, chain of custody, sustainability, security, certification &amp; liability — not a Verified ITAD opinion</div>
+    <div class="subtitle">Claims Readiness Review — public evidence map, not a Verified ITAD opinion</div>
   </div>
   <div class="report-meta">
     <span>Subject: {company_e}</span>
@@ -599,7 +646,7 @@ def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None)
     {gaps}
   </div>
   <div class="disclaimer">
-    Prepared as a Veridy public-claims screening aid using AI and public web search. It is not a Verified ITAD determination, not independent assurance of the vendor, not a certified compliance audit, and not a substitute for registry confirmation or job-level evidence. A vendor that “verifies” its own chain of custody is asking to be trusted. Confirm material findings with the issuing registry and with primary records.
+    Prepared as a Veridy Claims Readiness Review from public sources. It is not a Verified ITAD determination, not independent assurance of the vendor, and not a finding that an unverified claim is false. Absence of public evidence is not evidence the claim is false. An unanswered question is an evidence request. Confirm material items with registries, named facilities, contracts, and primary records.
   </div>
 </div>
 </body>
@@ -608,14 +655,14 @@ def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None)
 
 
 SAMPLE_REPORT = {
-    "summary": "Sample layout only. A live run replaces this with searched public claims for the company you enter.",
+    "summary": "Sample layout only. Supported 0 · Contradicted 0 · Not publicly substantiated 1 · Unable to verify 1 · Ambiguous 0.",
     "headline_claims": [
         "Maximum Value",
         "Minimum Risk",
         "Unbroken Chain of Custody",
     ],
     "chain_of_custody": {
-        "status": "Needs Substantiation",
+        "status": "Unable to Verify",
         "quotes": ["Unbroken chain of custody from pickup to final disposition."],
         "claims_process": True,
         "claims_evidence": False,
@@ -623,17 +670,18 @@ SAMPLE_REPORT = {
         "independent_verification_stated": False,
         "notify_discrepancies": "Unclear",
         "verbs": ["unbroken", "verify"],
-        "finding": "The sample vendor asserts an unbroken process and uses “verify” about its own handling. No independent party or job-level evidence offer is described.",
-        "trust_note": "Claiming to verify your own chain of custody, without an independent verifier, is a trust claim and the verification wording is misleading.",
+        "finding": "Public pages claim an unbroken process and use verify. Who performs any verification, and whether job-level records exist, is not established from public evidence.",
+        "evidence_needed": "A sample chain-of-custody packet and a statement of who, other than operations, reconciles expected vs received assets.",
     },
     "claims": [
         {
             "title": "Zero-landfill claim",
             "category": "Environment",
-            "status": "Needs Substantiation",
+            "status": "Not Publicly Substantiated",
             "claim": "100% of retired assets diverted from landfill.",
             "source": "Sample sustainability page",
-            "finding": "Marketing page only in this sample.",
+            "finding": "The claim appears on a marketing page. No public diversion report was found. That is not a finding that the claim is false.",
+            "evidence_needed": "Named downstream facilities and a recent diversion or residual-waste report.",
         }
     ],
     "gaps": "Sample mode does not search the web.",
@@ -697,9 +745,10 @@ def main() -> None:
     st.caption("PUBLIC CLAIMS SCREENING")
     st.title("Vendor Claims Audit")
     st.write(
-        "Enter a company. The report lists headline promises from the website, "
-        "always reviews chain-of-custody language (process vs evidence vs self-verification), "
-        "and rates other public claims. This is a screening aid — not a Verified ITAD opinion."
+        "Enter a company for a Claims Readiness Review. The report lists what the website claims, "
+        "what public evidence supports, what cannot be verified from public sources, and what "
+        "evidence would resolve each question. It is not a Verified ITAD opinion and does not "
+        "treat missing public proof as proof the claim is false."
     )
 
     if not api_key:
@@ -759,17 +808,16 @@ def main() -> None:
             st.session_state.pop("company", None)
             st.rerun()
 
-    with st.expander("How chain of custody is read"):
+    with st.expander("How ratings work"):
         st.markdown(
             """
-Chain of custody is a **process**. This review splits four things vendors often conflate:
+- **Supported** — independent public evidence supports the claim as written.
+- **Contradicted** — a reliable public source affirmatively conflicts with the claim.
+- **Not publicly substantiated** — the claim is on the site; supporting public evidence was not found. Not a finding that it is false.
+- **Unable to verify** — the check needs contracts, unnamed facilities, certificates, or other nonpublic items.
+- **Ambiguous** — wording, manager vs facility, or brand vs legal entity needs clarification.
 
-- **Process claim** — “we maintain / have an unbroken chain of custody.”
-- **Evidence claim** — they say they will give the client records (manifests, serials, photos, GPS, seals).
-- **Self-verification** — they say they *verify* or *validate* chain of custody. If no independent party is named, that is a **trust** claim. Calling it verification is misleading.
-- **Independent verification** — a party other than the vendor checks the chain. Certification of a management system is not the same as verifying a specific chain.
-
-Also checked: whether they say they will **notify the client of discrepancies**.
+Chain of custody is a process. The review records process claims, evidence offered, verify/validate wording, and whether an independent party is *described*. It does not infer self-verification from branding or ownership.
             """
         )
 
