@@ -72,7 +72,8 @@ Statuses — use EXACTLY one of these five strings:
 
 Method:
 1. Search the website, About/services/security/CoC/legal pages, press, LinkedIn, and relevant registries.
-2. List 4–10 headline slogans as written.
+2. If the user supplies article URLs (blog posts, bylined pieces, trade-press interviews, white papers), open and review those pages as primary claim sources. Treat vendor-authored articles as the vendor speaking. Quote claims from those URLs in the claims list and put the article URL in source.
+3. List 4–10 headline slogans as written. Include slogans that appear in supplied articles, not only on the homepage.
 3. Extract 4–7 checkable claims (CoC first, then environment, security, certs, legal, entity).
 4. Always complete chain_of_custody AND operating_model.
 5. For every claim include evidence_needed: the specific public or private item that would move the status to Supported or Contradicted.
@@ -89,6 +90,7 @@ Return STRICT JSON only. No markdown fences.
     "unable_to_verify": 0,
     "ambiguous": 0
   },
+  "sources_reviewed": ["URLs actually opened, including user-supplied articles"],
   "headline_claims": ["short slogan as written"],
   "chain_of_custody": {
     "status": "one of the five statuses",
@@ -201,13 +203,41 @@ def extract_output_text(payload: dict[str, Any]) -> str:
     return json.dumps(payload)
 
 
-def run_xai_audit(company: str, website: str, linkedin: str, api_key: str, model: str) -> dict[str, Any]:
+def parse_article_urls(raw: str) -> list[str]:
+    urls: list[str] = []
+    for line in (raw or "").replace(",", "\n").splitlines():
+        item = line.strip().strip("<>")
+        if not item:
+            continue
+        if not re.match(r"^https?://", item, flags=re.I):
+            item = "https://" + item
+        if item.lower() not in {u.lower() for u in urls}:
+            urls.append(item)
+    return urls[:20]
+
+
+def run_xai_audit(
+    company: str,
+    website: str,
+    linkedin: str,
+    articles: list[str],
+    api_key: str,
+    model: str,
+) -> dict[str, Any]:
+    if articles:
+        article_block = "Article / thought-leadership URLs the reviewer supplied (open each and extract claims):\n" + "\n".join(
+            f"- {u}" for u in articles
+        )
+    else:
+        article_block = "Article URLs: none supplied — still search for vendor-authored articles and quote any claims you find."
     user_prompt = (
         f"Audit this company's public claims for a Veridy screening report.\n"
         f"Company name: {company}\n"
         f"Website: {website or 'not provided — search for it'}\n"
         f"LinkedIn: {linkedin or 'not provided — search for it'}\n"
-        "Always extract headline slogans from the website and always complete the chain_of_custody section.\n"
+        f"{article_block}\n"
+        "Always extract headline slogans, always complete chain_of_custody and operating_model, "
+        "and include supplied article URLs in sources_reviewed when you actually open them.\n"
         "Return only the JSON object."
     )
     body = {
@@ -403,6 +433,14 @@ def build_report_pdf(company: str, data: dict[str, Any]) -> bytes:
     else:
         _wrapped(pdf, "No headline slogans were extracted from public pages.", size=10, color=MUTED)
 
+    sources = data.get("sources_reviewed") if isinstance(data.get("sources_reviewed"), list) else []
+    if sources:
+        _section_label(pdf, "Sources opened")
+        for s in sources:
+            if str(s).strip():
+                _wrapped(pdf, f"- {s}", size=9, color=MUTED, after=0.4)
+        pdf.ln(2)
+
     coc = data.get("chain_of_custody") if isinstance(data.get("chain_of_custody"), dict) else {}
     _section_label(pdf, "Chain of custody review")
     row_y = pdf.get_y()
@@ -561,6 +599,12 @@ def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None)
         headline_items = f"<ul class='headlines'>{lis}</ul>"
     else:
         headline_items = "<div class='claim-finding'>No headline slogans were extracted from public pages.</div>"
+    sources = data.get("sources_reviewed") if isinstance(data.get("sources_reviewed"), list) else []
+    if sources:
+        slis = "".join(f"<li>{html.escape(str(s))}</li>" for s in sources if str(s).strip())
+        sources_html = f"<div class='section-label'>Sources opened</div><ul class='headlines'>{slis}</ul>"
+    else:
+        sources_html = ""
 
     cards = []
     if not claims:
@@ -735,6 +779,7 @@ def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None)
   <div class="summary-text">{summary}</div>
   <div class="section-label">Headline claims on the website</div>
   {headline_items}
+  {sources_html}
   <div class="section-label">Chain of custody review</div>
   {coc_block}
   <div class="section-label">Operating model and partner network</div>
@@ -877,6 +922,12 @@ def main() -> None:
             website = st.text_input("Website (optional)", placeholder="acme-itad.com")
         with c2:
             linkedin = st.text_input("LinkedIn URL (optional)", placeholder="linkedin.com/company/acme-itad")
+        articles_raw = st.text_area(
+            "Article URLs (optional)",
+            placeholder="One URL per line. Vendor blog posts, bylined articles, interviews, white papers.",
+            help="These pages are reviewed as claim sources in addition to the website and LinkedIn.",
+            height=110,
+        )
         submitted = st.form_submit_button("Run audit", type="primary")
 
     if submitted:
@@ -890,7 +941,12 @@ def main() -> None:
             with st.spinner("Reading public pages and chain-of-custody language…"):
                 try:
                     st.session_state.report = run_xai_audit(
-                        company.strip(), website.strip(), linkedin.strip(), api_key, model
+                        company.strip(),
+                        website.strip(),
+                        linkedin.strip(),
+                        parse_article_urls(articles_raw),
+                        api_key,
+                        model,
                     )
                     st.session_state.company = company.strip()
                 except Exception as exc:
