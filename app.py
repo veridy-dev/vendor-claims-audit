@@ -71,14 +71,19 @@ Statuses — use EXACTLY one of these five strings:
 - Ambiguous — the wording is unclear, manager vs facility is mixed, or brand/entity/parent is mixed. State what clarification would resolve it.
 
 Method:
-1. Search the website, About/services/security/CoC/legal pages, press, LinkedIn, and relevant registries.
+1. Search the website, About/services/security/CoC/legal pages, press, LinkedIn, and relevant registries (SERI R2, e-Stewards, i-SIGMA NAID AAA).
 2. If the user supplies article URLs (blog posts, bylined pieces, trade-press interviews, white papers), open and review those pages as primary claim sources. Treat vendor-authored articles as the vendor speaking. Quote claims from those URLs in the claims list and put the article URL in source.
 3. List 4–10 headline slogans as written. Include slogans that appear in supplied articles, not only on the homepage.
-3. Extract 4–7 checkable claims (CoC first, then environment, security, certs, legal, entity).
-4. Always complete chain_of_custody AND operating_model.
-5. For every claim include evidence_needed: the specific public or private item that would move the status to Supported or Contradicted.
-6. Do not invent URLs, registry hits, or quotes.
-7. Summary: 2–4 sentences plus a count in this shape: “Supported N · Contradicted N · Not publicly substantiated N · Unable to verify N · Ambiguous N.”
+4. Extract 4–7 checkable claims (CoC first, then environment, security, certs, legal, entity).
+5. Always complete chain_of_custody AND operating_model.
+6. Always complete certifications as a structured list. For each claimed certification (R2 / R2v3, e-Stewards, NAID AAA, ISO, SOC 2, NIST, IEEE 2883):
+   - Record the exact standard and revision if cited (e.g. NIST SP 800-88 Rev. 1 vs Rev. 2; IEEE 2883-2022). Note if the vendor says “NIST certified” — NIST does not certify vendors.
+   - List named facilities from registries when found. For each facility capture: name/location, registry status (Active / not listed / in process), appendices or endorsements, expiration date if shown, scope notes (facility vs mobile; overwrite only vs destruction; App. A/B/C).
+   - If the vendor claims a certification but no own facility is listed, or partners are unnamed, status is Unable to Verify. Do not treat company-wide marketing as a facility record.
+7. For every claim and for chain_of_custody / operating_model, set source_type to exactly one of: Vendor site | Article | Press | SERI R2 directory | e-Stewards list | i-SIGMA NAID AAA | LinkedIn | Other public record | Unable to open registry.
+8. For every claim include evidence_needed: the specific public or private item that would move the status to Supported or Contradicted.
+9. Do not invent URLs, registry hits, or quotes. Stamp registry checks with the run date in registries_checked.
+10. Summary: 2–4 sentences plus a count in this shape: “Supported N · Contradicted N · Not publicly substantiated N · Unable to verify N · Ambiguous N.”
 
 Return STRICT JSON only. No markdown fences.
 {
@@ -90,8 +95,28 @@ Return STRICT JSON only. No markdown fences.
     "unable_to_verify": 0,
     "ambiguous": 0
   },
+  "registries_checked": "SERI R2, e-Stewards, i-SIGMA NAID AAA — checked [YYYY-MM-DD]",
   "sources_reviewed": ["URLs actually opened, including user-supplied articles"],
   "headline_claims": ["short slogan as written"],
+  "certifications": [
+    {
+      "standard": "R2v3 | e-Stewards | NAID AAA | ISO 9001 | NIST SP 800-88 | IEEE 2883 | other",
+      "status": "one of the five statuses",
+      "vendor_claim": "what the vendor says",
+      "source_type": "Vendor site | SERI R2 directory | e-Stewards list | i-SIGMA NAID AAA | other",
+      "facilities": [
+        {
+          "name": "facility or site name and city",
+          "registry_status": "Active | Not listed | In process | Unclear",
+          "appendices_or_endorsements": "App. A,B,C or facility HDD/SSD overwrite and destruction or none shown",
+          "expiration": "YYYY-MM-DD or not shown",
+          "scope_notes": "facility vs mobile; overwrite only vs destruction"
+        }
+      ],
+      "finding": "facility-level vs company-wide; revision if NIST/IEEE",
+      "evidence_needed": "what would resolve it"
+    }
+  ],
   "chain_of_custody": {
     "status": "one of the five statuses",
     "quotes": ["verbatim or close CoC sentences"],
@@ -103,6 +128,7 @@ Return STRICT JSON only. No markdown fences.
     "exception_reports_offered": "Yes | No | Unclear",
     "discrepancy_resolution_described": "Yes | No | Unclear",
     "verbs": ["verify", "validate", "maintain", "unbroken", "provide"],
+    "source_type": "Vendor site | Article | Press | other",
     "finding": "what public pages say; include exception reports and how discrepancies are closed",
     "evidence_needed": "what would resolve the CoC question"
   },
@@ -117,6 +143,7 @@ Return STRICT JSON only. No markdown fences.
     "equipment_holds_described": false,
     "independent_verification_of_partner_work": false,
     "quotes": ["coverage or partner sentences"],
+    "source_type": "Vendor site | Article | Press | other",
     "finding": "how public pages describe network management; if outsourced, state that controls matter more",
     "evidence_needed": "partner management protocol, named facilities or categories, hold/release rules, who verifies partner output"
   },
@@ -127,6 +154,7 @@ Return STRICT JSON only. No markdown fences.
       "status": "one of the five statuses",
       "claim": "quoted or closely paraphrased public claim",
       "source": "URL or page description",
+      "source_type": "Vendor site | Article | Press | SERI R2 directory | e-Stewards list | i-SIGMA NAID AAA | LinkedIn | Other public record | Unable to open registry",
       "finding": "what the public check showed",
       "evidence_needed": "specific item that would resolve it"
     }
@@ -535,6 +563,46 @@ def build_report_pdf(company: str, data: dict[str, Any]) -> bytes:
         pdf.multi_cell(0, 5, pdf_text("Evidence that would resolve this: " + str(need)), fill=True)
         pdf.ln(2)
 
+    certs = data.get("certifications") if isinstance(data.get("certifications"), list) else []
+    _section_label(pdf, "Facility-level certifications")
+    if data.get("registries_checked"):
+        _wrapped(pdf, str(data.get("registries_checked")), size=8, color=MUTED, after=1)
+    if not certs:
+        _wrapped(pdf, "No certification claims were extracted.", size=10, color=MUTED)
+    for cert in certs:
+        if not isinstance(cert, dict):
+            continue
+        if pdf.get_y() > 240:
+            pdf.add_page()
+        cy = pdf.get_y()
+        pdf.set_font("Times", "B", 13)
+        pdf.set_text_color(*NAVY)
+        pdf.cell(110, 7, pdf_text(str(cert.get("standard") or "Certification")))
+        pdf.set_xy(130, cy + 1)
+        _pill(pdf, str(cert.get("status") or "Unable to Verify"))
+        pdf.set_y(cy + 9)
+        if cert.get("vendor_claim"):
+            _wrapped(pdf, str(cert.get("vendor_claim")), size=10, style="I", after=1)
+        if cert.get("source_type"):
+            _wrapped(pdf, f"Source type: {cert.get('source_type')}", size=8, color=MUTED, after=1)
+        facilities = cert.get("facilities") if isinstance(cert.get("facilities"), list) else []
+        if not facilities:
+            _wrapped(pdf, "No named facilities found in the registry for this standard.", size=9, color=MUTED, after=1)
+        for f in facilities:
+            if not isinstance(f, dict):
+                continue
+            line = (
+                f"{f.get('name') or 'Facility'} — {f.get('registry_status') or 'Unclear'}; "
+                f"{f.get('appendices_or_endorsements') or 'endorsements not shown'}; "
+                f"exp. {f.get('expiration') or 'not shown'}. "
+                f"{f.get('scope_notes') or ''}"
+            )
+            _wrapped(pdf, line, size=9, after=0.6)
+        if cert.get("finding"):
+            _wrapped(pdf, str(cert.get("finding")), size=10, after=1)
+        if cert.get("evidence_needed"):
+            _wrapped(pdf, f"Evidence that would resolve this: {cert.get('evidence_needed')}", size=9, after=2)
+
     _section_label(pdf, "Other claims reviewed")
     claims = data.get("claims") if isinstance(data.get("claims"), list) else []
     if not claims:
@@ -562,6 +630,8 @@ def build_report_pdf(company: str, data: dict[str, Any]) -> bytes:
             _wrapped(pdf, str(c.get("finding")), size=10, after=1)
         if c.get("source"):
             _wrapped(pdf, f"Source: {c.get('source')}", size=8, color=MUTED, after=1)
+        if c.get("source_type"):
+            _wrapped(pdf, f"Source type: {c.get('source_type')}", size=8, color=MUTED, after=1)
         if c.get("evidence_needed"):
             _wrapped(pdf, f"Evidence that would resolve this: {c.get('evidence_needed')}", size=9, after=3)
         pdf.set_draw_color(228, 221, 207)
@@ -592,6 +662,7 @@ def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None)
     headlines = data.get("headline_claims") if isinstance(data.get("headline_claims"), list) else []
     coc = data.get("chain_of_custody") if isinstance(data.get("chain_of_custody"), dict) else {}
     ops = data.get("operating_model") if isinstance(data.get("operating_model"), dict) else {}
+    certs = data.get("certifications") if isinstance(data.get("certifications"), list) else []
 
     headline_items = ""
     if headlines:
@@ -619,9 +690,11 @@ def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None)
         source = html.escape(str(c.get("source") or ""))
         category = html.escape(str(c.get("category") or ""))
         needed = html.escape(str(c.get("evidence_needed") or ""))
+        source_type = html.escape(str(c.get("source_type") or ""))
         quote = f'<div class="claim-quote">“{claim}”</div>' if claim else ""
         finding_h = f'<div class="claim-finding">{finding}</div>' if finding else ""
         source_h = f'<div class="claim-source">Source: {source}</div>' if source else ""
+        type_h = f'<div class="claim-source">Source type: {source_type}</div>' if source_type else ""
         cat_h = f'<div class="claim-source">{category}</div>' if category else ""
         need_h = f'<div class="trust-note">Evidence that would resolve this: {needed}</div>' if needed else ""
         cards.append(
@@ -631,7 +704,7 @@ def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None)
                 <div class="claim-title">{title}</div>
                 <div class="pill {pill_class(status)}">{html.escape(status)}</div>
               </div>
-              {cat_h}{quote}{finding_h}{source_h}{need_h}
+              {cat_h}{quote}{finding_h}{type_h}{source_h}{need_h}
             </div>
             """
         )
@@ -692,6 +765,50 @@ def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None)
       <div class="trust-note">Evidence that would resolve this: {html.escape(str(ops.get("evidence_needed") or "Partner management protocol, named facilities or categories, hold/release rules, and who verifies partner output."))}</div>
     </div>
     """
+
+    cert_cards = []
+    for cert in certs:
+        if not isinstance(cert, dict):
+            continue
+        cstatus = str(cert.get("status") or "Unable to Verify")
+        std = html.escape(str(cert.get("standard") or "Certification"))
+        vclaim = html.escape(str(cert.get("vendor_claim") or ""))
+        stype = html.escape(str(cert.get("source_type") or ""))
+        finding_c = html.escape(str(cert.get("finding") or ""))
+        need_c = html.escape(str(cert.get("evidence_needed") or ""))
+        rows = ""
+        facilities = cert.get("facilities") if isinstance(cert.get("facilities"), list) else []
+        for f in facilities:
+            if not isinstance(f, dict):
+                continue
+            rows += (
+                "<tr>"
+                f"<th>{html.escape(str(f.get('name') or 'Facility'))}</th>"
+                f"<td>{html.escape(str(f.get('registry_status') or 'Unclear'))}"
+                f" · {html.escape(str(f.get('appendices_or_endorsements') or 'endorsements not shown'))}"
+                f" · exp. {html.escape(str(f.get('expiration') or 'not shown'))}"
+                f"<br>{html.escape(str(f.get('scope_notes') or ''))}</td>"
+                "</tr>"
+            )
+        if not rows:
+            rows = "<tr><th>Facilities in registry</th><td>None listed or not opened</td></tr>"
+        cert_cards.append(
+            f"""
+            <div class="coc-block" style="margin-bottom:14px;">
+              <div class="claim-head">
+                <div class="claim-title">{std}</div>
+                <div class="pill {pill_class(cstatus)}">{html.escape(cstatus)}</div>
+              </div>
+              <p class="coc-lead">{vclaim}</p>
+              <div class="claim-source">Source type: {stype}</div>
+              <table class="coc-table">{rows}</table>
+              <div class="claim-finding">{finding_c}</div>
+              <div class="trust-note">Evidence that would resolve this: {need_c or "Named facility listing with scope and expiry."}</div>
+            </div>
+            """
+        )
+    certs_block = "".join(cert_cards) if cert_cards else "<div class='claim-finding'>No certification claims were extracted.</div>"
+    registries_line = html.escape(str(data.get("registries_checked") or ""))
 
     brand = ""
     if logo_uri:
@@ -784,6 +901,9 @@ def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None)
   {coc_block}
   <div class="section-label">Operating model and partner network</div>
   {ops_block}
+  <div class="section-label">Facility-level certifications</div>
+  {f'<div class="claim-source" style="margin-bottom:10px;">{registries_line}</div>' if registries_line else ''}
+  {certs_block}
   <div class="section-label">Other claims reviewed</div>
   {''.join(cards)}
   <div class="gaps-block">
@@ -800,11 +920,23 @@ def render_report_html(company: str, data: dict[str, Any], logo_uri: str | None)
 
 
 SAMPLE_REPORT = {
-    "summary": "Sample layout only. Supported 0 · Contradicted 0 · Not publicly substantiated 1 · Unable to verify 1 · Ambiguous 0.",
+    "summary": "Sample layout only. Supported 0 · Contradicted 0 · Not publicly substantiated 1 · Unable to verify 2 · Ambiguous 0.",
+    "registries_checked": "SERI R2, e-Stewards, i-SIGMA NAID AAA — checked sample date",
     "headline_claims": [
         "Maximum Value",
         "Minimum Risk",
         "Unbroken Chain of Custody",
+    ],
+    "certifications": [
+        {
+            "standard": "R2v3",
+            "status": "Unable to Verify",
+            "vendor_claim": "R2 certified recycling through partners.",
+            "source_type": "Vendor site",
+            "facilities": [],
+            "finding": "No own facility listed in the SERI directory. Partners are unnamed, so facility scope and expiry cannot be checked from public sources.",
+            "evidence_needed": "Named processing facilities with Active R2v3 records, appendices, and expiration dates.",
+        }
     ],
     "chain_of_custody": {
         "status": "Unable to Verify",
@@ -815,6 +947,7 @@ SAMPLE_REPORT = {
         "independent_verification_stated": False,
         "notify_discrepancies": "Unclear",
         "verbs": ["unbroken", "verify"],
+        "source_type": "Vendor site",
         "finding": "Public pages claim an unbroken process and use verify. Who performs any verification, and whether job-level records exist, is not established from public evidence.",
         "exception_reports_offered": "Unclear",
         "discrepancy_resolution_described": "Unclear",
@@ -831,6 +964,7 @@ SAMPLE_REPORT = {
         "equipment_holds_described": False,
         "independent_verification_of_partner_work": False,
         "quotes": ["Global coverage through audited, contracted partners."],
+        "source_type": "Vendor site",
         "finding": "Coverage is claimed through partners. Public pages do not describe how partners are managed, who holds the asset, or who verifies partner output.",
         "evidence_needed": "Partner management protocol, hold/release rules, and who verifies partner work.",
     },
@@ -841,6 +975,7 @@ SAMPLE_REPORT = {
             "status": "Not Publicly Substantiated",
             "claim": "100% of retired assets diverted from landfill.",
             "source": "Sample sustainability page",
+            "source_type": "Vendor site",
             "finding": "The claim appears on a marketing page. No public diversion report was found. That is not a finding that the claim is false.",
             "evidence_needed": "Named downstream facilities and a recent diversion or residual-waste report.",
         }
@@ -988,6 +1123,8 @@ def main() -> None:
 - **Not publicly substantiated** — the claim is on the site; supporting public evidence was not found. Not a finding that it is false.
 - **Unable to verify** — the check needs contracts, unnamed facilities, certificates, or other nonpublic items.
 - **Ambiguous** — wording, manager vs facility, or brand vs legal entity needs clarification.
+
+Each finding carries a **source type** (vendor site, SERI R2 directory, e-Stewards list, i-SIGMA NAID AAA, press, article, etc.). Certification claims are broken out by **named facility**, with registry status, appendices or endorsements, expiration, and scope when those appear in a public registry. Company-wide marketing is not treated as a facility record.
 
 Chain of custody is a process. The review also asks whether exception reports exist and how inventory discrepancies are closed.
 
